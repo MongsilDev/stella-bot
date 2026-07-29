@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 
 import discord
 import sentry_sdk
@@ -34,6 +36,8 @@ class StellaBot(discord.Client):
 
     async def on_ready(self):
         log.info("로그인: %s", self.user)
+        await asyncio.gather(self._get_webhook(), self.translator.warmup())
+        log.info("워밍업 완료")
 
     async def _get_webhook(self) -> discord.Webhook:
         if self._webhook is None:
@@ -59,15 +63,21 @@ class StellaBot(discord.Client):
             return True
         return False
 
-    async def _translate_content(self, content: str) -> tuple[str, str] | None:
-        """번역문과 방향 문자열을 반환. 번역 대상이 아니면 None."""
-        direction = detect_direction(content)
+    async def _render(self, message: discord.Message) -> tuple[str, str] | None:
+        """게시할 본문과 방향 문자열을 반환. 번역 대상이 아니면 None."""
+        direction = detect_direction(message.content)
         if direction is None:
             return None
         source, target = direction
-        masked, spans = mask(content)
-        translated = await self.translator.translate(masked, source, target)
-        return unmask(translated, spans), f"{source}>{target}"
+        masked, spans = mask(message.content)
+        translated, line = await asyncio.gather(
+            self.translator.translate(masked, source, target),
+            self._reply_line(message, target),
+        )
+        translated = unmask(translated, spans)
+        if line:
+            translated = f"{line}\n{translated}"
+        return translated, f"{source}>{target}"
 
     async def _reply_line(self, message: discord.Message, target: str) -> str | None:
         ref = message.reference
@@ -81,16 +91,17 @@ class StellaBot(discord.Client):
         else:
             link_id = row.orig_id
         url = jump_url(message.guild.id, self.channel_id, link_id)
-        name = "원문"
-        resolved = ref.resolved
-        if isinstance(resolved, discord.Message):
-            name = resolved.author.display_name
-        else:
-            try:
-                fetched = await message.channel.fetch_message(ref.message_id)
-                name = fetched.author.display_name
-            except discord.HTTPException:
-                pass
+        name = row.author_name if row else ""
+        if not name:
+            resolved = ref.resolved
+            if isinstance(resolved, discord.Message):
+                name = resolved.author.display_name
+            else:
+                try:
+                    fetched = await message.channel.fetch_message(ref.message_id)
+                    name = fetched.author.display_name
+                except discord.HTTPException:
+                    name = "원문"
         return build_reply_line(name, url)
 
     async def on_message(self, message: discord.Message):
@@ -100,13 +111,11 @@ class StellaBot(discord.Client):
         if self._should_skip(message):
             return
         try:
-            result = await self._translate_content(message.content)
+            started = time.monotonic()
+            result = await self._render(message)
             if result is None:
                 return
             translated, direction = result
-            line = await self._reply_line(message, direction[-2:])
-            if line:
-                translated = f"{line}\n{translated}"
             webhook = await self._get_webhook()
             first_id: int | None = None
             for part in split_text(translated):
@@ -119,6 +128,7 @@ class StellaBot(discord.Client):
                 )
                 if first_id is None:
                     first_id = sent.id
+            log.info("번역 게시 %dms", (time.monotonic() - started) * 1000)
             await self.mapping.add(
                 MapRow(
                     orig_id=message.id,
@@ -126,6 +136,7 @@ class StellaBot(discord.Client):
                     channel_id=self.channel_id,
                     author_id=message.author.id,
                     direction=direction,
+                    author_name=message.author.display_name,
                 )
             )
         except (QuotaExceeded, TranslationError) as e:
@@ -146,13 +157,10 @@ class StellaBot(discord.Client):
                 self.channel_id
             )
             message = await channel.fetch_message(payload.message_id)
-            result = await self._translate_content(message.content)
+            result = await self._render(message)
             if result is None:
                 return
-            translated, direction = result
-            line = await self._reply_line(message, direction[-2:])
-            if line:
-                translated = f"{line}\n{translated}"
+            translated, _ = result
             webhook = await self._get_webhook()
             await webhook.edit_message(
                 row.trans_id,
