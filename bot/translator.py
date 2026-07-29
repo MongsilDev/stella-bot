@@ -29,14 +29,19 @@ class DeepLClient:
         except httpx.HTTPError:
             pass
 
-    async def translate(self, text: str, source: str, target: str) -> str:
+    async def translate(
+        self, text: str, source: str, target: str, context: str | None = None
+    ) -> str:
         body = {
             "text": [text],
             "source_lang": source,
             "target_lang": target,
             "tag_handling": "xml",
             "ignore_tags": ["x"],
+            "model_type": "prefer_quality_optimized",
         }
+        if context:
+            body["context"] = context
         last_error: Exception | None = None
         for attempt in range(self.MAX_ATTEMPTS):
             try:

@@ -108,3 +108,34 @@ async def test_warmup_swallows_errors():
 
     client = make_client(handler)
     await client.warmup()
+
+
+@pytest.mark.asyncio
+async def test_next_gen_model_requested():
+    captured = {}
+
+    def handler(request):
+        import json
+
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"translations": [{"text": "x"}]})
+
+    client = make_client(handler)
+    await client.translate("안녕", "KO", "JA")
+    assert captured["body"]["model_type"] == "prefer_quality_optimized"
+    assert "context" not in captured["body"]
+
+
+@pytest.mark.asyncio
+async def test_context_passed_through():
+    captured = {}
+
+    def handler(request):
+        import json
+
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"translations": [{"text": "x"}]})
+
+    client = make_client(handler)
+    await client.translate("안녕", "KO", "JA", context="몽실: 이전 대화")
+    assert captured["body"]["context"] == "몽실: 이전 대화"
