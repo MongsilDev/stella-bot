@@ -18,8 +18,16 @@ class DeepLClient:
     def __init__(self, api_key: str, client: httpx.AsyncClient | None = None):
         host = "api-free.deepl.com" if api_key.endswith(":fx") else "api.deepl.com"
         self._url = f"https://{host}/v2/translate"
+        self._usage_url = f"https://{host}/v2/usage"
         self._headers = {"Authorization": f"DeepL-Auth-Key {api_key}"}
         self._client = client or httpx.AsyncClient(timeout=15)
+
+    async def warmup(self):
+        """TLS 연결을 미리 열어 첫 번역의 핸드셰이크 지연을 없앤다."""
+        try:
+            await self._client.get(self._usage_url, headers=self._headers)
+        except httpx.HTTPError:
+            pass
 
     async def translate(self, text: str, source: str, target: str) -> str:
         body = {

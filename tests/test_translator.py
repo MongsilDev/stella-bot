@@ -86,3 +86,25 @@ async def test_paid_key_uses_main_host():
     client = DeepLClient("paid-key", client=httpx.AsyncClient(transport=transport))
     await client.translate("안녕", "KO", "JA")
     assert "//api.deepl.com" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_warmup_hits_usage_endpoint():
+    captured = {}
+
+    def handler(request):
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"character_count": 0})
+
+    client = make_client(handler)
+    await client.warmup()
+    assert captured["url"].endswith("/v2/usage")
+
+
+@pytest.mark.asyncio
+async def test_warmup_swallows_errors():
+    def handler(request):
+        raise httpx.ConnectError("down")
+
+    client = make_client(handler)
+    await client.warmup()
