@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from collections import deque
 
 import discord
 import sentry_sdk
@@ -33,6 +34,7 @@ class StellaBot(discord.Client):
         self.mapping = mapping
         self.allow_bots = allow_bots
         self._webhook: discord.Webhook | None = None
+        self._recent: deque[str] = deque(maxlen=5)
 
     async def on_ready(self):
         log.info("로그인: %s", self.user)
@@ -63,7 +65,9 @@ class StellaBot(discord.Client):
             return True
         return False
 
-    async def _render(self, message: discord.Message) -> tuple[str, str] | None:
+    async def _render(
+        self, message: discord.Message, context: str | None
+    ) -> tuple[str, str] | None:
         """게시할 본문과 방향 문자열을 반환. 번역 대상이 아니면 None."""
         direction = detect_direction(message.content)
         if direction is None:
@@ -71,7 +75,7 @@ class StellaBot(discord.Client):
         source, target = direction
         masked, spans = mask(message.content)
         translated, line = await asyncio.gather(
-            self.translator.translate(masked, source, target),
+            self.translator.translate(masked, source, target, context=context),
             self._reply_line(message, target),
         )
         translated = unmask(translated, spans)
@@ -110,9 +114,11 @@ class StellaBot(discord.Client):
             await self._get_webhook()
         if self._should_skip(message):
             return
+        context = "\n".join(self._recent) or None
+        self._recent.append(f"{message.author.display_name}: {message.content}")
         try:
             started = time.monotonic()
-            result = await self._render(message)
+            result = await self._render(message, context)
             if result is None:
                 return
             translated, direction = result
@@ -157,7 +163,7 @@ class StellaBot(discord.Client):
                 self.channel_id
             )
             message = await channel.fetch_message(payload.message_id)
-            result = await self._render(message)
+            result = await self._render(message, "\n".join(self._recent) or None)
             if result is None:
                 return
             translated, _ = result
