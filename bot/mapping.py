@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS message_map (
     author_id INTEGER NOT NULL,
     author_name TEXT NOT NULL DEFAULT '',
     direction TEXT NOT NULL,
+    orig_text TEXT NOT NULL DEFAULT '',
+    trans_text TEXT NOT NULL DEFAULT '',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_message_map_trans ON message_map (trans_id);
@@ -24,6 +26,8 @@ class MapRow:
     author_id: int
     direction: str
     author_name: str = ""
+    orig_text: str = ""
+    trans_text: str = ""
 
 
 class MessageMap:
@@ -34,17 +38,18 @@ class MessageMap:
         await self._db.executescript(SCHEMA)
         cur = await self._db.execute("PRAGMA table_info(message_map)")
         columns = [c[1] for c in await cur.fetchall()]
-        if "author_name" not in columns:
+        for missing in {"author_name", "orig_text", "trans_text"} - set(columns):
             await self._db.execute(
-                "ALTER TABLE message_map ADD COLUMN author_name TEXT NOT NULL DEFAULT ''"
+                f"ALTER TABLE message_map ADD COLUMN {missing} TEXT NOT NULL DEFAULT ''"
             )
         await self._db.commit()
 
     async def add(self, row: MapRow):
         await self._db.execute(
             "INSERT OR REPLACE INTO message_map"
-            " (orig_id, trans_id, channel_id, author_id, direction, author_name)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            " (orig_id, trans_id, channel_id, author_id, direction, author_name,"
+            " orig_text, trans_text)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 row.orig_id,
                 row.trans_id,
@@ -52,13 +57,16 @@ class MessageMap:
                 row.author_id,
                 row.direction,
                 row.author_name,
+                row.orig_text,
+                row.trans_text,
             ),
         )
         await self._db.commit()
 
     async def lookup(self, message_id: int) -> MapRow | None:
         cur = await self._db.execute(
-            "SELECT orig_id, trans_id, channel_id, author_id, direction, author_name"
+            "SELECT orig_id, trans_id, channel_id, author_id, direction, author_name,"
+            " orig_text, trans_text"
             " FROM message_map WHERE orig_id = ? OR trans_id = ?",
             (message_id, message_id),
         )

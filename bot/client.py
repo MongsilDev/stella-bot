@@ -143,6 +143,8 @@ class StellaBot(discord.Client):
                     author_id=message.author.id,
                     direction=direction,
                     author_name=message.author.display_name,
+                    orig_text=message.content,
+                    trans_text=translated,
                 )
             )
         except (QuotaExceeded, TranslationError) as e:
@@ -173,6 +175,9 @@ class StellaBot(discord.Client):
                 content=split_text(translated)[0],
                 allowed_mentions=NO_MENTIONS,
             )
+            row.orig_text = message.content
+            row.trans_text = translated
+            await self.mapping.add(row)
         except discord.NotFound:
             pass
         except (QuotaExceeded, TranslationError) as e:

@@ -51,3 +51,21 @@ async def test_delete(store):
     await store.delete(100)
     assert await store.lookup(100) is None
     assert await store.lookup(200) is None
+
+
+@pytest.mark.asyncio
+async def test_texts_roundtrip(store):
+    row = MapRow(
+        orig_id=300,
+        trans_id=400,
+        channel_id=1,
+        author_id=42,
+        direction="JA>KO",
+        author_name="Taro",
+        orig_text="今日は21時からで大丈夫ですか？",
+        trans_text="오늘 21시부터 시작해도 괜찮으세요?",
+    )
+    await store.add(row)
+    found = await store.lookup(300)
+    assert found.orig_text == row.orig_text
+    assert found.trans_text == row.trans_text
