@@ -139,3 +139,38 @@ async def test_context_passed_through():
     client = make_client(handler)
     await client.translate("안녕", "KO", "JA", context="몽실: 이전 대화")
     assert captured["body"]["context"] == "몽실: 이전 대화"
+
+
+@pytest.mark.asyncio
+async def test_glossary_included_when_set():
+    captured = {}
+
+    def handler(request):
+        import json
+
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"translations": [{"text": "x"}]})
+
+    transport = httpx.MockTransport(handler)
+    client = DeepLClient(
+        "test-key:fx",
+        client=httpx.AsyncClient(transport=transport),
+        glossary_id="gid-123",
+    )
+    await client.translate("안녕", "KO", "JA")
+    assert captured["body"]["glossary_id"] == "gid-123"
+
+
+@pytest.mark.asyncio
+async def test_glossary_absent_by_default():
+    captured = {}
+
+    def handler(request):
+        import json
+
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"translations": [{"text": "x"}]})
+
+    client = make_client(handler)
+    await client.translate("안녕", "KO", "JA")
+    assert "glossary_id" not in captured["body"]

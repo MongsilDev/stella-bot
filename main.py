@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 
@@ -21,7 +22,11 @@ async def main():
     mapping = MessageMap()
     os.makedirs("data", exist_ok=True)
     await mapping.open("data/stella.db")
-    translator = DeepLClient(os.environ["DEEPL_API_KEY"])
+    glossary_id = None
+    if os.path.exists("config/glossary_ids.json"):
+        with open("config/glossary_ids.json") as f:
+            glossary_id = json.load(f)["glossary_id"]
+    translator = DeepLClient(os.environ["DEEPL_API_KEY"], glossary_id=glossary_id)
 
     bot = StellaBot(
         channel_id=int(os.environ["CHANNEL_ID"]),

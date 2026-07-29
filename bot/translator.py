@@ -15,12 +15,18 @@ class DeepLClient:
     MAX_ATTEMPTS = 3
     RETRY_BASE_DELAY = 1.0
 
-    def __init__(self, api_key: str, client: httpx.AsyncClient | None = None):
+    def __init__(
+        self,
+        api_key: str,
+        client: httpx.AsyncClient | None = None,
+        glossary_id: str | None = None,
+    ):
         host = "api-free.deepl.com" if api_key.endswith(":fx") else "api.deepl.com"
         self._url = f"https://{host}/v2/translate"
         self._usage_url = f"https://{host}/v2/usage"
         self._headers = {"Authorization": f"DeepL-Auth-Key {api_key}"}
         self._client = client or httpx.AsyncClient(timeout=15)
+        self._glossary_id = glossary_id
 
     async def warmup(self):
         """TLS 연결을 미리 열어 첫 번역의 핸드셰이크 지연을 없앤다."""
@@ -42,6 +48,8 @@ class DeepLClient:
         }
         if context:
             body["context"] = context
+        if self._glossary_id:
+            body["glossary_id"] = self._glossary_id
         last_error: Exception | None = None
         for attempt in range(self.MAX_ATTEMPTS):
             try:
