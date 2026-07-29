@@ -11,7 +11,14 @@ async def store():
     await m.close()
 
 
-ROW = MapRow(orig_id=100, trans_id=200, channel_id=1, author_id=42, direction="KO>JA")
+ROW = MapRow(
+    orig_id=100,
+    trans_id=200,
+    channel_id=1,
+    author_id=42,
+    direction="KO>JA",
+    author_name="몽실",
+)
 
 
 @pytest.mark.asyncio
@@ -29,6 +36,13 @@ async def test_lookup_by_trans(store):
 @pytest.mark.asyncio
 async def test_lookup_missing_returns_none(store):
     assert await store.lookup(999) is None
+
+
+@pytest.mark.asyncio
+async def test_author_name_roundtrip(store):
+    await store.add(ROW)
+    found = await store.lookup(100)
+    assert found.author_name == "몽실"
 
 
 @pytest.mark.asyncio
