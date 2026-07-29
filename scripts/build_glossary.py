@@ -89,19 +89,18 @@ def dictionary(source: str, target: str, pairs: dict[str, str]) -> dict:
 
 
 def replace_glossary(
-    client: httpx.Client, headers: dict, ko_ja: dict[str, str], ja_ko: dict[str, str]
+    client: httpx.Client, headers: dict, base: str,
+    ko_ja: dict[str, str], ja_ko: dict[str, str],
 ) -> str:
-    existing = client.get(
-        "https://api-free.deepl.com/v3/glossaries", headers=headers
-    ).json()["glossaries"]
+    existing = client.get(f"{base}/v3/glossaries", headers=headers).json()["glossaries"]
     for g in existing:
         if g["name"] == "stella":
             client.delete(
-                f"https://api-free.deepl.com/v3/glossaries/{g['glossary_id']}",
+                f"{base}/v3/glossaries/{g['glossary_id']}",
                 headers=headers,
             )
     resp = client.post(
-        "https://api-free.deepl.com/v3/glossaries",
+        f"{base}/v3/glossaries",
         headers=headers,
         json={
             "name": "stella",
@@ -136,9 +135,10 @@ def main():
     ko_ja.update(load_team_terms(ROOT / "config" / "team_terms_ko_ja.tsv"))
     ja_ko.update(load_team_terms(ROOT / "config" / "team_terms_ja_ko.tsv"))
 
+    host = "api-free.deepl.com" if deepl_key.endswith(":fx") else "api.deepl.com"
     headers = {"Authorization": f"DeepL-Auth-Key {deepl_key}"}
     with httpx.Client(timeout=60) as client:
-        gid = replace_glossary(client, headers, ko_ja, ja_ko)
+        gid = replace_glossary(client, headers, f"https://{host}", ko_ja, ja_ko)
 
     out = ROOT / "config" / "glossary_ids.json"
     out.write_text(json.dumps({"glossary_id": gid}, indent=2) + "\n")
