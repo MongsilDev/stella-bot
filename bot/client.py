@@ -9,7 +9,7 @@ import sentry_sdk
 from bot.detect import detect_direction
 from bot.formatting import build_reply_line, jump_url, split_text
 from bot.mapping import MapRow, MessageMap
-from bot.masking import mask, unmask
+from bot.masking import mask, strip_discord_tokens, unmask
 from bot.translator import DeepLClient, QuotaExceeded, TranslationError
 
 log = logging.getLogger("stella")
@@ -115,7 +115,9 @@ class StellaBot(discord.Client):
         if self._should_skip(message):
             return
         context = "\n".join(self._recent) or None
-        self._recent.append(f"{message.author.display_name}: {message.content}")
+        self._recent.append(
+            strip_discord_tokens(f"{message.author.display_name}: {message.content}")
+        )
         try:
             started = time.monotonic()
             result = await self._render(message, context)
