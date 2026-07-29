@@ -1,0 +1,88 @@
+import httpx
+import pytest
+
+from bot.translator import DeepLClient, QuotaExceeded, TranslationError
+
+
+def make_client(handler):
+    transport = httpx.MockTransport(handler)
+    http = httpx.AsyncClient(transport=transport)
+    return DeepLClient("test-key:fx", client=http)
+
+
+@pytest.mark.asyncio
+async def test_translate_success():
+    captured = {}
+
+    def handler(request):
+        import json
+
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200, json={"translations": [{"text": "こんにちは"}]}
+        )
+
+    client = make_client(handler)
+    result = await client.translate("안녕하세요", "KO", "JA")
+    assert result == "こんにちは"
+    assert "api-free.deepl.com" in captured["url"]
+    assert captured["body"]["tag_handling"] == "xml"
+    assert captured["body"]["ignore_tags"] == ["x"]
+    assert captured["body"]["source_lang"] == "KO"
+    assert captured["body"]["target_lang"] == "JA"
+
+
+@pytest.mark.asyncio
+async def test_quota_exceeded_raises_immediately():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(456)
+
+    client = make_client(handler)
+    with pytest.raises(QuotaExceeded):
+        await client.translate("안녕", "KO", "JA")
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_then_success():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) < 3:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"translations": [{"text": "ok"}]})
+
+    client = make_client(handler)
+    client.RETRY_BASE_DELAY = 0
+    assert await client.translate("안녕", "KO", "JA") == "ok"
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_retries_exhausted():
+    def handler(request):
+        return httpx.Response(500)
+
+    client = make_client(handler)
+    client.RETRY_BASE_DELAY = 0
+    with pytest.raises(TranslationError):
+        await client.translate("안녕", "KO", "JA")
+
+
+@pytest.mark.asyncio
+async def test_paid_key_uses_main_host():
+    captured = {}
+
+    def handler(request):
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"translations": [{"text": "x"}]})
+
+    transport = httpx.MockTransport(handler)
+    client = DeepLClient("paid-key", client=httpx.AsyncClient(transport=transport))
+    await client.translate("안녕", "KO", "JA")
+    assert "//api.deepl.com" in captured["url"]
