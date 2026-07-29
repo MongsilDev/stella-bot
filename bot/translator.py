@@ -66,7 +66,8 @@ class DeepLClient:
                 last_error = TranslationError(f"HTTP {resp.status_code}")
                 await asyncio.sleep(self.RETRY_BASE_DELAY * 2**attempt)
                 continue
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                raise TranslationError(f"HTTP {resp.status_code}: {resp.text[:200]}")
             return resp.json()["translations"][0]["text"]
         raise TranslationError(f"재시도 소진: {last_error}")
 

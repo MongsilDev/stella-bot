@@ -174,3 +174,17 @@ async def test_glossary_absent_by_default():
     client = make_client(handler)
     await client.translate("안녕", "KO", "JA")
     assert "glossary_id" not in captured["body"]
+
+
+@pytest.mark.asyncio
+async def test_bad_request_raises_translation_error_without_retry():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(400, json={"message": "Tag handling parsing failed"})
+
+    client = make_client(handler)
+    with pytest.raises(TranslationError):
+        await client.translate("안녕", "KO", "JA")
+    assert len(calls) == 1
