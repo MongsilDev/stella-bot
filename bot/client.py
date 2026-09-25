@@ -12,7 +12,7 @@ from bot.mapping import MapRow, MessageMap
 from bot.masking import mask, strip_discord_tokens, unmask
 from bot.translator import DeepLClient, QuotaExceeded, TranslationError
 
-log = logging.getLogger("stella")
+log = logging.getLogger("stella-bot")
 WEBHOOK_NAME = "stella-bot"
 NO_MENTIONS = discord.AllowedMentions.none()
 

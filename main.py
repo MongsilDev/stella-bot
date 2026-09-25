@@ -13,11 +13,15 @@ from bot.translator import DeepLClient
 
 async def main():
     load_dotenv()
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
     dsn = os.getenv("SENTRY_DSN")
     if dsn:
-        sentry_sdk.init(dsn=dsn)
+        sentry_sdk.init(dsn=dsn, environment="production")
 
     mapping = MessageMap()
     os.makedirs("data", exist_ok=True)
