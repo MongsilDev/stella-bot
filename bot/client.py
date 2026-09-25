@@ -150,6 +150,7 @@ class StellaBot(discord.Client):
                 )
             )
         except (QuotaExceeded, TranslationError) as e:
+            log.warning("번역 실패 (메시지 %s): %s: %s", message.id, type(e).__name__, e)
             sentry_sdk.capture_exception(e)
             try:
                 await message.add_reaction("⚠️")
@@ -183,6 +184,7 @@ class StellaBot(discord.Client):
         except discord.NotFound:
             pass
         except (QuotaExceeded, TranslationError) as e:
+            log.warning("번역 실패 (수정 %s): %s: %s", payload.message_id, type(e).__name__, e)
             sentry_sdk.capture_exception(e)
 
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
