@@ -35,3 +35,12 @@ def test_empty_skipped():
 
 def test_emoji_only_skipped():
     assert detect_direction("👍🔥") is None
+
+
+def test_jamo_only_skipped():
+    assert detect_direction("ㅋㅋㅋ") is None
+    assert detect_direction("ㅇㅇ ㄱㄱ") is None
+
+
+def test_jamo_does_not_outweigh_kana():
+    assert detect_direction("ㅋㅋㅋㅋㅋ ありがとう") == ("JA", "KO")

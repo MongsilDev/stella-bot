@@ -1,6 +1,7 @@
 import re
 
-HANGUL = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏]")
+# ㅋㅋ 같은 자모만으로는 한국어 문장으로 보지 않음
+HANGUL = re.compile(r"[가-힣]")
 KANA = re.compile(r"[぀-ゟ゠-ヿ]")
 HAN = re.compile(r"[一-鿿]")
 
