@@ -15,6 +15,7 @@ from bot.translator import DeepLClient, QuotaExceeded, TranslationError
 log = logging.getLogger("stella-bot")
 WEBHOOK_NAME = "stella-bot"
 NO_MENTIONS = discord.AllowedMentions.none()
+QUOTA_REPORT_INTERVAL = 3600
 
 
 class StellaBot(discord.Client):
@@ -35,6 +36,7 @@ class StellaBot(discord.Client):
         self.allow_bots = allow_bots
         self._webhook: discord.Webhook | None = None
         self._recent: deque[str] = deque(maxlen=5)
+        self._quota_reported_at: float | None = None
 
     async def on_ready(self):
         log.info("로그인: %s", self.user)
@@ -57,13 +59,50 @@ class StellaBot(discord.Client):
     def _should_skip(self, message: discord.Message) -> bool:
         if message.channel.id != self.channel_id:
             return True
+        reason = None
         if self._webhook and message.webhook_id == self._webhook.id:
-            return True
-        if message.author.bot and not self.allow_bots:
-            return True
-        if not message.content.strip():
+            reason = "own webhook"
+        elif message.author.bot and not self.allow_bots:
+            reason = "bot author"
+        elif not message.content.strip():
+            reason = "empty content"
+        if reason:
+            log.debug("건너뜀 (메시지 %s): %s", message.id, reason)
             return True
         return False
+
+    def _report_failure(self, e: Exception) -> None:
+        if isinstance(e, QuotaExceeded):
+            now = time.monotonic()
+            last = self._quota_reported_at
+            if last is not None and now - last < QUOTA_REPORT_INTERVAL:
+                return
+            self._quota_reported_at = now
+        sentry_sdk.capture_exception(e)
+
+    async def _send_parts(self, message: discord.Message, parts: list[str]) -> list[int]:
+        """웹훅으로 조각을 순서대로 게시. 웹훅이 지워졌으면 다시 만들어 남은 조각을 한 번 더 보냄."""
+        ids: list[int] = []
+        retried = False
+        while len(ids) < len(parts):
+            webhook = await self._get_webhook()
+            try:
+                sent = await webhook.send(
+                    parts[len(ids)],
+                    username=message.author.display_name,
+                    avatar_url=message.author.display_avatar.url,
+                    wait=True,
+                    allowed_mentions=NO_MENTIONS,
+                )
+            except discord.NotFound:
+                if retried:
+                    raise
+                retried = True
+                log.warning("웹훅이 없어 다시 가져옴 (메시지 %s)", message.id)
+                self._webhook = None
+                continue
+            ids.append(sent.id)
+        return ids
 
     async def _render(
         self, message: discord.Message, context: str | None
@@ -124,23 +163,12 @@ class StellaBot(discord.Client):
             if result is None:
                 return
             translated, direction = result
-            webhook = await self._get_webhook()
-            first_id: int | None = None
-            for part in split_text(translated):
-                sent = await webhook.send(
-                    part,
-                    username=message.author.display_name,
-                    avatar_url=message.author.display_avatar.url,
-                    wait=True,
-                    allowed_mentions=NO_MENTIONS,
-                )
-                if first_id is None:
-                    first_id = sent.id
+            ids = await self._send_parts(message, split_text(translated))
             log.info("번역 게시 %dms", (time.monotonic() - started) * 1000)
             await self.mapping.add(
                 MapRow(
                     orig_id=message.id,
-                    trans_id=first_id,
+                    trans_id=ids[0],
                     channel_id=self.channel_id,
                     author_id=message.author.id,
                     direction=direction,
@@ -149,9 +177,9 @@ class StellaBot(discord.Client):
                     trans_text=translated,
                 )
             )
-        except (QuotaExceeded, TranslationError) as e:
+        except (QuotaExceeded, TranslationError, discord.HTTPException) as e:
             log.warning("번역 실패 (메시지 %s): %s: %s", message.id, type(e).__name__, e)
-            sentry_sdk.capture_exception(e)
+            self._report_failure(e)
             try:
                 await message.add_reaction("⚠️")
             except discord.HTTPException:
@@ -185,7 +213,7 @@ class StellaBot(discord.Client):
             pass
         except (QuotaExceeded, TranslationError) as e:
             log.warning("번역 실패 (수정 %s): %s: %s", payload.message_id, type(e).__name__, e)
-            sentry_sdk.capture_exception(e)
+            self._report_failure(e)
 
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
         if payload.channel_id != self.channel_id:
