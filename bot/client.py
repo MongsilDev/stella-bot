@@ -104,6 +104,14 @@ class StellaBot(discord.Client):
             ids.append(sent.id)
         return ids
 
+    async def _delete_parts(self, ids: list[int]) -> None:
+        webhook = await self._get_webhook()
+        for mid in ids:
+            try:
+                await webhook.delete_message(mid)
+            except discord.NotFound:
+                pass
+
     async def _render(
         self, message: discord.Message, context: str | None
     ) -> tuple[str, str] | None:
@@ -175,6 +183,7 @@ class StellaBot(discord.Client):
                     author_name=message.author.display_name,
                     orig_text=message.content,
                     trans_text=translated,
+                    trans_ids=ids,
                 )
             )
         except (QuotaExceeded, TranslationError, discord.HTTPException) as e:
@@ -191,21 +200,34 @@ class StellaBot(discord.Client):
         row = await self.mapping.lookup(payload.message_id)
         if row is None or row.orig_id != payload.message_id:
             return
+        # 임베드 미리보기가 붙을 때도 수정 이벤트 발생
+        if payload.data.get("content") == row.orig_text:
+            return
         try:
             channel = self.get_channel(self.channel_id) or await self.fetch_channel(
                 self.channel_id
             )
             message = await channel.fetch_message(payload.message_id)
+            if message.content == row.orig_text:
+                return
             result = await self._render(message, "\n".join(self._recent) or None)
             if result is None:
+                await self._delete_parts(row.chunk_ids())
+                await self.mapping.delete(row.orig_id)
                 return
-            translated, _ = result
+            translated, direction = result
+            parts = split_text(translated)
+            old_ids = row.chunk_ids()
             webhook = await self._get_webhook()
-            await webhook.edit_message(
-                row.trans_id,
-                content=split_text(translated)[0],
-                allowed_mentions=NO_MENTIONS,
-            )
+            for mid, part in zip(old_ids, parts):
+                await webhook.edit_message(mid, content=part, allowed_mentions=NO_MENTIONS)
+            new_ids = old_ids[: len(parts)]
+            if len(parts) > len(old_ids):
+                new_ids += await self._send_parts(message, parts[len(old_ids):])
+            await self._delete_parts(old_ids[len(parts):])
+            row.trans_id = new_ids[0]
+            row.trans_ids = new_ids
+            row.direction = direction
             row.orig_text = message.content
             row.trans_text = translated
             await self.mapping.add(row)
@@ -222,9 +244,5 @@ class StellaBot(discord.Client):
         if row is None:
             return
         if row.orig_id == payload.message_id:
-            try:
-                webhook = await self._get_webhook()
-                await webhook.delete_message(row.trans_id)
-            except discord.NotFound:
-                pass
+            await self._delete_parts(row.chunk_ids())
         await self.mapping.delete(row.orig_id)

@@ -69,3 +69,40 @@ async def test_texts_roundtrip(store):
     found = await store.lookup(300)
     assert found.orig_text == row.orig_text
     assert found.trans_text == row.trans_text
+
+
+@pytest.mark.asyncio
+async def test_chunk_ids_roundtrip(store):
+    row = MapRow(orig_id=500, trans_id=600, channel_id=1, author_id=42,
+                 direction="KO>JA", trans_ids=[600, 601, 602])
+    await store.add(row)
+    found = await store.lookup(500)
+    assert found.trans_ids == [600, 601, 602]
+    assert found.chunk_ids() == [600, 601, 602]
+
+
+@pytest.mark.asyncio
+async def test_legacy_row_chunk_ids_fall_back_to_first(store):
+    await store.add(ROW)
+    found = await store.lookup(100)
+    assert found.trans_ids == []
+    assert found.chunk_ids() == [200]
+
+
+@pytest.mark.asyncio
+async def test_open_migrates_old_schema(tmp_path):
+    import aiosqlite
+    path = str(tmp_path / "old.db")
+    async with aiosqlite.connect(path) as db:
+        await db.execute(
+            "CREATE TABLE message_map (orig_id INTEGER PRIMARY KEY, trans_id INTEGER NOT NULL,"
+            " channel_id INTEGER NOT NULL, author_id INTEGER NOT NULL, direction TEXT NOT NULL)")
+        await db.execute("INSERT INTO message_map VALUES (1, 2, 3, 4, 'KO>JA')")
+        await db.commit()
+    m = MessageMap()
+    await m.open(path)
+    try:
+        found = await m.lookup(1)
+        assert found.chunk_ids() == [2]
+    finally:
+        await m.close()
