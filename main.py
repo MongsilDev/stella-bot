@@ -40,7 +40,13 @@ async def main():
 
     dsn = os.getenv("SENTRY_DSN")
     if dsn:
-        sentry_sdk.init(dsn=dsn, environment="production", before_send=_sentry_before_send)
+        sentry_sdk.init(
+            dsn=dsn,
+            environment="production",
+            before_send=_sentry_before_send,
+            # 핸들러 지역변수에 채팅 원문과 번역문이 있음
+            include_local_variables=False,
+        )
 
     mapping = MessageMap()
     os.makedirs("data", exist_ok=True)
