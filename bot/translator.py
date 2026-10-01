@@ -59,6 +59,8 @@ class DeepLClient:
             body["glossary_id"] = self._glossary_id
         last_error: Exception | None = None
         for attempt in range(self.MAX_ATTEMPTS):
+            if attempt:
+                await asyncio.sleep(self.RETRY_BASE_DELAY * 2 ** (attempt - 1))
             try:
                 resp = await self._client.post(
                     self._url, json=body, headers=self._headers
@@ -66,14 +68,12 @@ class DeepLClient:
             except httpx.HTTPError as e:
                 last_error = e
                 log.debug("DeepL 재시도 %d/%d: %s: %s", attempt + 1, self.MAX_ATTEMPTS, type(e).__name__, e)
-                await asyncio.sleep(self.RETRY_BASE_DELAY * 2**attempt)
                 continue
             if resp.status_code == 456:
                 raise QuotaExceeded("DeepL 월 한도 초과")
             if resp.status_code == 429 or resp.status_code >= 500:
                 last_error = TranslationError(f"HTTP {resp.status_code}")
                 log.debug("DeepL 재시도 %d/%d: HTTP %d", attempt + 1, self.MAX_ATTEMPTS, resp.status_code)
-                await asyncio.sleep(self.RETRY_BASE_DELAY * 2**attempt)
                 continue
             if resp.status_code >= 400:
                 raise TranslationError(f"HTTP {resp.status_code}: {resp.text[:200]}")

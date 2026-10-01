@@ -75,6 +75,20 @@ async def test_retries_exhausted():
 
 
 @pytest.mark.asyncio
+async def test_no_sleep_after_last_attempt(monkeypatch):
+    delays = []
+
+    async def fake_sleep(seconds):
+        delays.append(seconds)
+
+    monkeypatch.setattr("bot.translator.asyncio.sleep", fake_sleep)
+    client = make_client(lambda request: httpx.Response(500))
+    with pytest.raises(TranslationError):
+        await client.translate("안녕", "KO", "JA")
+    assert delays == [1.0, 2.0]
+
+
+@pytest.mark.asyncio
 async def test_paid_key_uses_main_host():
     captured = {}
 
