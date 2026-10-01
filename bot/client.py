@@ -16,6 +16,10 @@ WEBHOOK_NAME = "stella-bot"
 NO_MENTIONS = discord.AllowedMentions.none()
 QUOTA_REPORT_INTERVAL = 3600
 
+# 음성 기능을 쓰지 않아 PyNaCl, davey 미설치 경고를 끔
+discord.VoiceClient.warn_nacl = False
+discord.VoiceClient.warn_dave = False
+
 
 class StellaBot(discord.Client):
     def __init__(
