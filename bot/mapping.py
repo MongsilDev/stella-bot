@@ -56,6 +56,10 @@ class MessageMap:
             await self._db.execute(
                 f"ALTER TABLE message_map ADD COLUMN {missing} TEXT NOT NULL DEFAULT ''"
             )
+        if "created_at" not in columns:
+            # ADD COLUMN은 CURRENT_TIMESTAMP 기본값을 받지 않아 add()에서 직접 채움
+            await self._db.execute("ALTER TABLE message_map ADD COLUMN created_at TEXT")
+            await self._db.execute("UPDATE message_map SET created_at = CURRENT_TIMESTAMP")
         await self._db.commit()
         await self.purge()
 
@@ -71,8 +75,8 @@ class MessageMap:
         await self._db.execute(
             "INSERT OR REPLACE INTO message_map"
             " (orig_id, trans_id, channel_id, author_id, direction, author_name,"
-            " orig_text, trans_text, trans_ids)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " orig_text, trans_text, trans_ids, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
             (
                 row.orig_id,
                 row.trans_id,

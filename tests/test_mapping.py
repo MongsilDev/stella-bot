@@ -104,5 +104,8 @@ async def test_open_migrates_old_schema(tmp_path):
     try:
         found = await m.lookup(1)
         assert found.chunk_ids() == [2]
+        await m.add(ROW)
+        cur = await m._db.execute("SELECT COUNT(*) FROM message_map WHERE created_at IS NULL")
+        assert (await cur.fetchone())[0] == 0
     finally:
         await m.close()
