@@ -4,7 +4,6 @@ import time
 from collections import deque
 
 import discord
-import sentry_sdk
 
 from bot.detect import detect_direction
 from bot.formatting import build_reply_line, jump_url, split_text
@@ -71,14 +70,15 @@ class StellaBot(discord.Client):
             return True
         return False
 
-    def _report_failure(self, e: Exception) -> None:
+    def _report_failure(self, e: Exception, kind: str, ref: int) -> None:
         if isinstance(e, QuotaExceeded):
             now = time.monotonic()
             last = self._quota_reported_at
             if last is not None and now - last < QUOTA_REPORT_INTERVAL:
+                log.warning("번역 실패 (%s %s): %s: %s", kind, ref, type(e).__name__, e)
                 return
             self._quota_reported_at = now
-        sentry_sdk.capture_exception(e)
+        log.error("번역 실패 (%s %s): %s: %s", kind, ref, type(e).__name__, e, exc_info=e)
 
     async def _send_parts(self, message: discord.Message, parts: list[str]) -> list[int]:
         """웹훅으로 조각을 순서대로 게시. 웹훅이 지워졌으면 다시 만들어 남은 조각을 한 번 더 보냄."""
@@ -187,8 +187,7 @@ class StellaBot(discord.Client):
                 )
             )
         except (QuotaExceeded, TranslationError, discord.HTTPException) as e:
-            log.warning("번역 실패 (메시지 %s): %s: %s", message.id, type(e).__name__, e)
-            self._report_failure(e)
+            self._report_failure(e, "메시지", message.id)
             try:
                 await message.add_reaction("⚠️")
             except discord.HTTPException:
@@ -234,8 +233,7 @@ class StellaBot(discord.Client):
         except discord.NotFound:
             pass
         except (QuotaExceeded, TranslationError) as e:
-            log.warning("번역 실패 (수정 %s): %s: %s", payload.message_id, type(e).__name__, e)
-            self._report_failure(e)
+            self._report_failure(e, "수정", payload.message_id)
 
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
         if payload.channel_id != self.channel_id:

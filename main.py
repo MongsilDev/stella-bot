@@ -6,10 +6,6 @@ import os
 import sentry_sdk
 from dotenv import load_dotenv
 
-from bot.client import StellaBot
-from bot.mapping import MessageMap
-from bot.translator import DeepLClient
-
 _RECONNECT_LOGGERS = ("discord.client", "discord.gateway")
 _NOISE_EXC_NAMES = ("TimeoutError", "WSServerHandshakeError")
 
@@ -29,24 +25,26 @@ def _sentry_before_send(event, hint):
     return event
 
 
+load_dotenv()
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN", ""),
+    before_send=_sentry_before_send,
+    # 핸들러 지역변수에 채팅 원문과 번역문이 있음
+    include_local_variables=False,
+)
+
+from bot.client import StellaBot  # noqa: E402
+from bot.mapping import MessageMap  # noqa: E402
+from bot.translator import DeepLClient  # noqa: E402
+
+
 async def main():
-    load_dotenv()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
-
-    dsn = os.getenv("SENTRY_DSN")
-    if dsn:
-        sentry_sdk.init(
-            dsn=dsn,
-            environment="production",
-            before_send=_sentry_before_send,
-            # 핸들러 지역변수에 채팅 원문과 번역문이 있음
-            include_local_variables=False,
-        )
 
     mapping = MessageMap()
     os.makedirs("data", exist_ok=True)

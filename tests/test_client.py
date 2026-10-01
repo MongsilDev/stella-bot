@@ -1,9 +1,9 @@
+import logging
 from types import SimpleNamespace
 
 import discord
 import pytest
 
-from bot import client as client_mod
 from bot.client import StellaBot
 from bot.mapping import MapRow, MessageMap
 from bot.translator import QuotaExceeded
@@ -99,13 +99,12 @@ async def test_other_http_error_adds_warning_reaction(bot):
     assert msg.reactions == ["⚠️"]
 
 
-async def test_quota_reported_once_per_hour(bot, monkeypatch):
-    captured = []
-    monkeypatch.setattr(client_mod.sentry_sdk, "capture_exception", captured.append)
+async def test_quota_reported_once_per_hour(bot, caplog):
     bot.translator = _Translator(QuotaExceeded("quota"))
     await bot.on_message(_Message(12, "하나"))
     await bot.on_message(_Message(13, "둘"))
-    assert len(captured) == 1
+    levels = [r.levelno for r in caplog.records if r.getMessage().startswith("번역 실패")]
+    assert levels == [logging.ERROR, logging.WARNING]
 
 
 def _edit_payload(mid, content):
