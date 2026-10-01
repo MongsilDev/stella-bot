@@ -28,7 +28,11 @@ class DeepLClient:
         self._url = f"https://{host}/v2/translate"
         self._usage_url = f"https://{host}/v2/usage"
         self._headers = {"Authorization": f"DeepL-Auth-Key {api_key}"}
-        self._client = client or httpx.AsyncClient(timeout=15)
+        self._client = client or httpx.AsyncClient(
+            timeout=15,
+            # DeepL은 유휴 25초까지 연결 유지, 30초에는 끊음
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20, keepalive_expiry=20),
+        )
         self._glossary_id = glossary_id
 
     async def warmup(self):
