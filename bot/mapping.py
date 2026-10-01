@@ -1,3 +1,5 @@
+import os
+import time
 from dataclasses import dataclass, field
 
 import aiosqlite
@@ -17,6 +19,9 @@ CREATE TABLE IF NOT EXISTS message_map (
 );
 CREATE INDEX IF NOT EXISTS idx_message_map_trans ON message_map (trans_id);
 """
+
+# 원문과 번역문을 보관하는 기간. 지나면 그 메시지의 수정과 삭제는 번역에 반영되지 않음
+RETENTION_DAYS = 90
 
 
 @dataclass
@@ -38,9 +43,11 @@ class MapRow:
 
 class MessageMap:
     _db: aiosqlite.Connection
+    _purged_at: float = 0.0
 
     async def open(self, path: str):
         self._db = await aiosqlite.connect(path)
+        os.chmod(path, 0o600)
         await self._db.executescript(SCHEMA)
         cur = await self._db.execute("PRAGMA table_info(message_map)")
         columns = [c[1] for c in await cur.fetchall()]
@@ -49,8 +56,17 @@ class MessageMap:
                 f"ALTER TABLE message_map ADD COLUMN {missing} TEXT NOT NULL DEFAULT ''"
             )
         await self._db.commit()
+        await self.purge()
+
+    async def purge(self):
+        await self._db.execute(
+            "DELETE FROM message_map WHERE created_at < datetime('now', ?)", (f"-{RETENTION_DAYS} days",))
+        await self._db.commit()
+        self._purged_at = time.monotonic()
 
     async def add(self, row: MapRow):
+        if time.monotonic() - self._purged_at > 86400:
+            await self.purge()
         await self._db.execute(
             "INSERT OR REPLACE INTO message_map"
             " (orig_id, trans_id, channel_id, author_id, direction, author_name,"
