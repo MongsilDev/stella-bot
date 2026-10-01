@@ -47,7 +47,8 @@ class MessageMap:
 
     async def open(self, path: str):
         self._db = await aiosqlite.connect(path)
-        os.chmod(path, 0o600)
+        if path != ":memory:":
+            os.chmod(path, 0o600)
         await self._db.executescript(SCHEMA)
         cur = await self._db.execute("PRAGMA table_info(message_map)")
         columns = [c[1] for c in await cur.fetchall()]
