@@ -24,7 +24,7 @@ def _unescape(text: str) -> str:
 def mask(text: str) -> tuple[str, list[str]]:
     """보존 구간을 토큰으로 치환하고 나머지는 XML 이스케이프한다.
 
-    DeepL을 tag_handling=xml로 호출하므로 본문의 홑 <, >, &가 그대로 가면
+    DeepL을 tag_handling=xml로 호출하므로 본문의 홑 <, >, &가 그대로 전달되면
     파싱 실패(400)가 난다.
     """
     spans: list[str] = []

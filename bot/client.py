@@ -203,7 +203,7 @@ class StellaBot(discord.Client):
         row = await self.mapping.lookup(payload.message_id)
         if row is None or row.orig_id != payload.message_id:
             return
-        # 임베드 미리보기가 붙을 때도 수정 이벤트 발생
+        # 임베드 미리보기가 추가될 때도 수정 이벤트 발생
         if payload.data.get("content") == row.orig_text:
             return
         try:
