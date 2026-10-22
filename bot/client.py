@@ -156,7 +156,7 @@ class StellaBot(discord.Client):
                     fetched = await message.channel.fetch_message(ref.message_id)
                     name = fetched.author.display_name
                 except discord.HTTPException:
-                    name = "원문"
+                    name = "原文" if target == "JA" else "원문"
         return build_reply_line(name, url)
 
     async def on_message(self, message: discord.Message):
